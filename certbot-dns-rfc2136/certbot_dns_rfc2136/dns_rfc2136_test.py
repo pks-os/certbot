@@ -1,6 +1,5 @@
 """Tests for certbot_dns_rfc2136.dns_rfc2136."""
 
-import os
 import unittest
 
 import dns.flags
@@ -9,6 +8,7 @@ import dns.tsig
 import mock
 
 from certbot import errors
+from certbot.compat import os
 from certbot.plugins import dns_test_common
 from certbot.plugins.dns_test_common import DOMAIN
 from certbot.tests import util as test_util
@@ -64,7 +64,7 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
 
     def test_valid_algorithm_passes(self):
         config = VALID_CONFIG.copy()
-        config["rfc2136_algorithm"] = "HMAC-SHA512"
+        config["rfc2136_algorithm"] = "HMAC-sha512"
         dns_test_common.write(config, self.config.rfc2136_credentials)
 
         self.auth.perform([self.achall])
@@ -73,9 +73,12 @@ class AuthenticatorTest(test_util.TempDirTestCase, dns_test_common.BaseAuthentic
 class RFC2136ClientTest(unittest.TestCase):
 
     def setUp(self):
-        from certbot_dns_rfc2136.dns_rfc2136 import _RFC2136Client
+        from certbot_dns_rfc2136.dns_rfc2136 import _RFC2136Client, _RFC2136Key
 
-        self.rfc2136_client = _RFC2136Client(SERVER, PORT, NAME, SECRET, dns.tsig.HMAC_MD5)
+        self.rfc2136_client = _RFC2136Client(SERVER,
+                                             PORT,
+                                             None,
+                                             _RFC2136Key(NAME, SECRET, dns.tsig.HMAC_MD5))
 
     @mock.patch("dns.query.tcp")
     def test_add_txt_record(self, query_mock):
@@ -162,6 +165,28 @@ class RFC2136ClientTest(unittest.TestCase):
             self.rfc2136_client._find_domain,
             'foo.bar.'+DOMAIN)
 
+    def test_find_domain_with_base(self):
+        # _query_soa | pylint: disable=protected-access
+        self.rfc2136_client._query_soa = mock.MagicMock(side_effect=[False, False, True])
+        self.rfc2136_client.base_domain = 'bar.' + DOMAIN
+
+        # _find_domain | pylint: disable=protected-access
+        domain = self.rfc2136_client._find_domain('foo.bar.' + DOMAIN)
+
+        self.assertTrue(domain == 'bar.' + DOMAIN)
+
+    def test_find_domain_with_wrong_base(self):
+
+        # _query_soa | pylint: disable=protected-access
+        self.rfc2136_client._query_soa = mock.MagicMock(side_effect=[False, False, True])
+        self.rfc2136_client.base_domain = 'wrong.' + DOMAIN
+
+        self.assertRaises(
+            errors.PluginError,
+            # _find_domain | pylint: disable=protected-access
+            self.rfc2136_client._find_domain,
+            'foo.bar.' + DOMAIN)
+
     @mock.patch("dns.query.udp")
     def test_query_soa_found(self, query_mock):
         query_mock.return_value = mock.MagicMock(answer=[mock.MagicMock()], flags=dns.flags.AA)
@@ -171,7 +196,7 @@ class RFC2136ClientTest(unittest.TestCase):
         result = self.rfc2136_client._query_soa(DOMAIN)
 
         query_mock.assert_called_with(mock.ANY, SERVER, port=PORT)
-        self.assertTrue(result == True)
+        self.assertTrue(result)
 
     @mock.patch("dns.query.udp")
     def test_query_soa_not_found(self, query_mock):
@@ -181,7 +206,7 @@ class RFC2136ClientTest(unittest.TestCase):
         result = self.rfc2136_client._query_soa(DOMAIN)
 
         query_mock.assert_called_with(mock.ANY, SERVER, port=PORT)
-        self.assertTrue(result == False)
+        self.assertFalse(result)
 
     @mock.patch("dns.query.udp")
     def test_query_soa_wraps_errors(self, query_mock):

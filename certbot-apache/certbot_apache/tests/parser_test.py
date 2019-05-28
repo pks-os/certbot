@@ -1,5 +1,4 @@
 """Tests for certbot_apache.parser."""
-import os
 import shutil
 import unittest
 
@@ -7,6 +6,7 @@ import augeas
 import mock
 
 from certbot import errors
+from certbot.compat import os
 
 from certbot_apache.tests import util
 
@@ -52,7 +52,7 @@ class BasicParserTest(util.ParserTest):
         test2 = self.parser.find_dir("documentroot")
 
         self.assertEqual(len(test), 1)
-        self.assertEqual(len(test2), 7)
+        self.assertEqual(len(test2), 8)
 
     def test_add_dir(self):
         aug_default = "/files" + self.parser.loc["default"]
@@ -234,6 +234,7 @@ class BasicParserTest(util.ParserTest):
                 return inc_val
             elif cmd[-1] == "DUMP_MODULES":
                 return mod_val
+            return None  # pragma: no cover
 
         mock_cfg.side_effect = mock_get_vars
 

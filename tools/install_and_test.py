@@ -15,18 +15,17 @@ import subprocess
 import re
 
 SKIP_PROJECTS_ON_WINDOWS = [
-    'certbot-apache', 'certbot-nginx', 'certbot-postfix', 'letshelp-certbot']
+    'certbot-apache', 'certbot-postfix', 'letshelp-certbot']
+
 
 def call_with_print(command, cwd=None):
     print(command)
     subprocess.check_call(command, shell=True, cwd=cwd or os.getcwd())
 
+
 def main(args):
-    if os.environ.get('CERTBOT_NO_PIN') == '1':
-        command = [sys.executable, '-m', 'pip', '-e']
-    else:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        command = [sys.executable, os.path.join(script_dir, 'pip_install_editable.py')]
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    command = [sys.executable, os.path.join(script_dir, 'pip_install_editable.py')]
 
     new_args = []
     for arg in args:
@@ -50,7 +49,7 @@ def main(args):
         shutil.copy2("pytest.ini", temp_cwd)
         try:
             call_with_print(' '.join([
-                sys.executable, '-m', 'pytest', pkg.replace('-', '_')]), cwd=temp_cwd)
+                sys.executable, '-m', 'pytest', '--pyargs', pkg.replace('-', '_')]), cwd=temp_cwd)
         finally:
             shutil.rmtree(temp_cwd)
 

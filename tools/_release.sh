@@ -42,7 +42,7 @@ mv "dist.$version" "dist.$version.$(date +%s).bak" || true
 git tag --delete "$tag" || true
 
 tmpvenv=$(mktemp -d)
-virtualenv --no-site-packages -p python2 $tmpvenv
+VIRTUALENV_NO_DOWNLOAD=1 virtualenv --no-site-packages -p python2 $tmpvenv
 . $tmpvenv/bin/activate
 # update setuptools/pip just like in other places in the repo
 pip install -U setuptools
@@ -75,8 +75,15 @@ for pkg_dir in $SUBPKGS_NO_CERTBOT certbot-compatibility-test .
 do
   sed -i 's/\.dev0//' "$pkg_dir/setup.py"
   git add "$pkg_dir/setup.py"
-done
 
+  if [ -f "$pkg_dir/local-oldest-requirements.txt" ]; then
+    sed -i "s/-e acme\[dev\]/acme[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
+    sed -i "s/-e acme/acme[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
+    sed -i "s/-e \.\[dev\]/certbot[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
+    sed -i "s/-e \./certbot[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
+    git add "$pkg_dir/local-oldest-requirements.txt"
+  fi
+done
 
 SetVersion() {
     ver="$1"
@@ -102,6 +109,9 @@ SetVersion() {
 
 SetVersion "$version"
 
+# Unset CERTBOT_OLDEST to prevent wheels from being built improperly due to
+# conditionals like the one found in certbot-dns-dnsimple's setup.py file.
+unset CERTBOT_OLDEST
 echo "Preparing sdists and wheels"
 for pkg_dir in . $SUBPKGS_NO_CERTBOT
 do
@@ -135,7 +145,7 @@ cd "dist.$version"
 python -m SimpleHTTPServer $PORT &
 # cd .. is NOT done on purpose: we make sure that all subpackages are
 # installed from local PyPI rather than current directory (repo root)
-virtualenv --no-site-packages ../venv
+VIRTUALENV_NO_DOWNLOAD=1 virtualenv --no-site-packages ../venv
 . ../venv/bin/activate
 pip install -U setuptools
 pip install -U pip
@@ -143,7 +153,7 @@ pip install -U pip
 # (or our dependencies) have conditional dependencies implemented with if
 # statements in setup.py and we have cached wheels lying around that would
 # cause those ifs to not be evaluated.
-pip install \
+python ../tools/pip_install.py \
   --no-cache-dir \
   --extra-index-url http://localhost:$PORT \
   $SUBPKGS
@@ -166,7 +176,7 @@ fi
 mkdir kgs
 kgs="kgs/$version"
 pip freeze | tee $kgs
-pip install pytest
+python ../tools/pip_install.py pytest
 for module in $subpkgs_modules ; do
     echo testing $module
     # use an empty configuration file rather than the one in the repo root
@@ -265,16 +275,6 @@ if [ "$RELEASE_BRANCH" = candidate-"$version" ] ; then
     SetVersion "$nextversion".dev0
     letsencrypt-auto-source/build.py
     git add letsencrypt-auto-source/letsencrypt-auto
-    for pkg_dir in $SUBPKGS_NO_CERTBOT .
-    do
-      if [ -f "$pkg_dir/local-oldest-requirements.txt" ]; then
-        sed -i "s/-e acme\[dev\]/acme[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
-        sed -i "s/-e acme/acme[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
-        sed -i "s/-e \.\[dev\]/certbot[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
-        sed -i "s/-e \./certbot[dev]==$version/" "$pkg_dir/local-oldest-requirements.txt"
-        git add "$pkg_dir/local-oldest-requirements.txt"
-      fi
-    done
     git diff
     git commit -m "Bump version to $nextversion"
 fi

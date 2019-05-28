@@ -2,25 +2,24 @@
 import datetime
 import glob
 import logging
-import os
 import re
+import shutil
 import stat
 
 import configobj
 import parsedatetime
 import pytz
-import shutil
 import six
 
 import certbot
 from certbot import cli
-from certbot import compat
 from certbot import constants
 from certbot import crypto_util
-from certbot import errors
 from certbot import error_handler
+from certbot import errors
 from certbot import util
-
+from certbot.compat import misc
+from certbot.compat import os
 from certbot.plugins import common as plugins_common
 from certbot.plugins import disco as plugins_disco
 
@@ -41,7 +40,9 @@ def renewal_conf_files(config):
     :rtype: `list` of `str`
 
     """
-    return glob.glob(os.path.join(config.renewal_configs_dir, "*.conf"))
+    result = glob.glob(os.path.join(config.renewal_configs_dir, "*.conf"))
+    result.sort()
+    return result
 
 def renewal_file_for_certname(config, certname):
     """Return /path/to/certname.conf in the renewal conf directory"""
@@ -190,7 +191,7 @@ def update_configuration(lineagename, archive_dir, target, cli_config):
     # Save only the config items that are relevant to renewal
     values = relevant_values(vars(cli_config.namespace))
     write_renewal_config(config_filename, temp_filename, archive_dir, target, values)
-    compat.os_rename(temp_filename, config_filename)
+    misc.os_rename(temp_filename, config_filename)
 
     return configobj.ConfigObj(config_filename)
 
@@ -237,16 +238,17 @@ def _write_live_readme_to(readme_path, is_base_dir=False):
                                     "certificates.\n".format(prefix=prefix))
 
 
-def _relevant(option):
+def _relevant(namespaces, option):
     """
     Is this option one that could be restored for future renewal purposes?
+
+    :param namespaces: plugin namespaces for configuration options
+    :type namespaces: `list` of `str`
     :param str option: the name of the option
 
     :rtype: bool
     """
     from certbot import renewal
-    plugins = plugins_disco.PluginsRegistry.find_all()
-    namespaces = [plugins_common.dest_namespace(plugin) for plugin in plugins]
 
     return (option in renewal.CONFIG_ITEMS or
             any(option.startswith(namespace) for namespace in namespaces))
@@ -261,10 +263,13 @@ def relevant_values(all_values):
     :rtype dict:
 
     """
+    plugins = plugins_disco.PluginsRegistry.find_all()
+    namespaces = [plugins_common.dest_namespace(plugin) for plugin in plugins]
+
     rv = dict(
         (option, value)
         for option, value in six.iteritems(all_values)
-        if _relevant(option) and cli.option_was_set(option, value))
+        if _relevant(namespaces, option) and cli.option_was_set(option, value))
     # We always save the server value to help with forward compatibility
     # and behavioral consistency when versions of Certbot with different
     # server defaults are used.
@@ -299,8 +304,7 @@ def full_archive_path(config_obj, cli_config, lineagename):
     """
     if config_obj and "archive_dir" in config_obj:
         return config_obj["archive_dir"]
-    else:
-        return os.path.join(cli_config.default_archive_dir, lineagename)
+    return os.path.join(cli_config.default_archive_dir, lineagename)
 
 def _full_live_path(cli_config, lineagename):
     """Returns the full default live path for a lineagename"""
@@ -508,8 +512,7 @@ class RenewableCert(object):
         server = self.configuration["renewalparams"].get("server", None)
         if server:
             return util.is_staging(server)
-        else:
-            return False
+        return False
 
     def _check_symlinks(self):
         """Raises an exception if a symlink doesn't exist"""
@@ -698,9 +701,8 @@ class RenewableCert(object):
         matches = pattern.match(os.path.basename(target))
         if matches:
             return int(matches.groups()[0])
-        else:
-            logger.debug("No matches for target %s.", kind)
-            return None
+        logger.debug("No matches for target %s.", kind)
+        return None
 
     def version(self, kind, version):
         """The filename that corresponds to the specified version and kind.
@@ -876,45 +878,6 @@ class RenewableCert(object):
             raise errors.CertStorageError("could not find cert file")
         with open(target) as f:
             return crypto_util.get_names_from_cert(f.read())
-
-    def autodeployment_is_enabled(self):
-        """Is automatic deployment enabled for this cert?
-
-        If autodeploy is not specified, defaults to True.
-
-        :returns: True if automatic deployment is enabled
-        :rtype: bool
-
-        """
-        return ("autodeploy" not in self.configuration or
-                self.configuration.as_bool("autodeploy"))
-
-    def should_autodeploy(self, interactive=False):
-        """Should this lineage now automatically deploy a newer version?
-
-        This is a policy question and does not only depend on whether
-        there is a newer version of the cert. (This considers whether
-        autodeployment is enabled, whether a relevant newer version
-        exists, and whether the time interval for autodeployment has
-        been reached.)
-
-        :param bool interactive: set to True to examine the question
-            regardless of whether the renewal configuration allows
-            automated deployment (for interactive use). Default False.
-
-        :returns: whether the lineage now ought to autodeploy an
-            existing newer cert version
-        :rtype: bool
-
-        """
-        if interactive or self.autodeployment_is_enabled():
-            if self.has_pending_deployment():
-                interval = self.configuration.get("deploy_before_expiry",
-                                                  "5 days")
-                now = pytz.UTC.fromutc(datetime.datetime.utcnow())
-                if self.target_expiry < add_time_interval(now, interval):
-                    return True
-        return False
 
     def ocsp_revoked(self, version=None):
         # pylint: disable=no-self-use,unused-argument

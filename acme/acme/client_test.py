@@ -64,7 +64,7 @@ class ClientTestBase(unittest.TestCase):
         reg = messages.Registration(
             contact=self.contact, key=KEY.public_key())
         the_arg = dict(reg) # type: Dict
-        self.new_reg = messages.NewRegistration(**the_arg) # pylint: disable=star-args
+        self.new_reg = messages.NewRegistration(**the_arg)
         self.regr = messages.RegistrationResource(
             body=reg, uri='https://www.letsencrypt-demo.org/acme/reg/1')
 
@@ -358,7 +358,6 @@ class ClientTest(ClientTestBase):
 
     def test_register(self):
         # "Instance of 'Field' has no to_json/update member" bug:
-        # pylint: disable=no-member
         self.response.status_code = http_client.CREATED
         self.response.json.return_value = self.regr.body.to_json()
         self.response.headers['Location'] = self.regr.uri
@@ -371,7 +370,6 @@ class ClientTest(ClientTestBase):
 
     def test_update_registration(self):
         # "Instance of 'Field' has no to_json/update member" bug:
-        # pylint: disable=no-member
         self.response.headers['Location'] = self.regr.uri
         self.response.json.return_value = self.regr.body.to_json()
         self.assertEqual(self.regr, self.client.update_registration(self.regr))
@@ -707,6 +705,7 @@ class ClientTest(ClientTestBase):
             self.certr,
             self.rsn)
 
+
 class ClientV2Test(ClientTestBase):
     """Tests for acme.client.ClientV2."""
 
@@ -843,7 +842,6 @@ class ClientV2Test(ClientTestBase):
 
     def test_update_registration(self):
         # "Instance of 'Field' has no to_json/update member" bug:
-        # pylint: disable=no-member
         self.response.headers['Location'] = self.regr.uri
         self.response.json.return_value = self.regr.body.to_json()
         self.assertEqual(self.regr, self.client.update_registration(self.regr))
@@ -905,7 +903,7 @@ class MockJSONDeSerializable(jose.JSONDeSerializable):
         return {'foo': self.value}
 
     @classmethod
-    def from_json(cls, value):
+    def from_json(cls, jobj):
         pass  # pragma: no cover
 
 
@@ -949,7 +947,6 @@ class ClientNetworkTest(unittest.TestCase):
         self.assertEqual(jws.signature.combined.nonce, b'Tg')
         self.assertEqual(jws.signature.combined.kid, u'acct-uri')
         self.assertEqual(jws.signature.combined.url, u'url')
-
 
     def test_check_response_not_ok_jobj_no_error(self):
         self.response.ok = False
@@ -1113,8 +1110,8 @@ class ClientNetworkTest(unittest.TestCase):
 
         # Requests Library Exceptions
         except requests.exceptions.ConnectionError as z: #pragma: no cover
-            self.assertTrue("('Connection aborted.', error(111, 'Connection refused'))"
-                              == str(z) or "[WinError 10061]" in str(z))
+            self.assertTrue("'Connection aborted.'" in str(z) or "[WinError 10061]" in str(z))
+
 
 class ClientNetworkWithMockedResponseTest(unittest.TestCase):
     """Tests for acme.client.ClientNetwork which mock out response."""
